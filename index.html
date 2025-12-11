@@ -841,7 +841,6 @@
                 } else if (lastVal === targetVal) {
                     if (checkIndex === originalSeq.length) {
                         processSteps.push(`[${currentSeq.join(',')}] → [${truncated.join(',')}]`);
-                        processSteps.push(`所有位置都匹配`);
                         processSteps.push(`<span class="success">✓ 是标准式，来源于 [${currentSeq.join(',')}]</span>`);
                         standardResultDiv.innerHTML = `<div class="standard-process">${processSteps.join('<br>')}</div>`;
                         return;
