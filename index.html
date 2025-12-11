@@ -276,10 +276,13 @@
             this.specialPositions = [];
         }
 
-        getAncestorChain(seq, parentIndices) {
-            let lastIndex = seq.length - 1;
+        getAncestorChain(seq, parentIndices, startIndex = -1) {
+            if (startIndex === -1) {
+                startIndex = seq.length - 1;
+            }
+            
             let chain = [];
-            let current = lastIndex;
+            let current = startIndex;
             while (true) {
                 let p = parentIndices[current];
                 if (p === -1) break;
@@ -302,10 +305,13 @@
             return p;
         }
 
-        calcDiffParents(seq, ancestorIndices) {
+        calcDiffParents(seq, prevSeq, prevParents) {
             let p = new Array(seq.length).fill(-1);
-            let ancestorSet = new Set(ancestorIndices);
+            
             for (let i = 0; i < seq.length; i++) {
+                let ancestorChain = this.getAncestorChain(prevSeq, prevParents, i);
+                let ancestorSet = new Set(ancestorChain);
+                
                 for (let j = i - 1; j >= 0; j--) {
                     if (ancestorSet.has(j)) {
                         if (seq[j] < seq[i]) {
@@ -370,7 +376,7 @@
                     let currentAncestorIndices = this.getAncestorChain(seq, pars);
                     ancestorChains.push(currentAncestorIndices);
                     
-                    let nextParents = this.calcDiffParents(nextSeq, currentAncestorIndices);
+                    let nextParents = this.calcDiffParents(nextSeq, seq, pars);
                     this.parents.push(nextParents);
                     level++;
                 }
@@ -912,4 +918,4 @@
 </script>
 
 </body>
-</html>
+    </html>
