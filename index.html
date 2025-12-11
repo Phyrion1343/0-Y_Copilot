@@ -1,1 +1,915 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0-Y 展开器</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #f5f5f5; }
+        h1, h2, h3 { color: #333; }
+        h3 { font-size: 16px; margin-bottom: 8px; margin-top: 12px; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #007BFF; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        button:hover { background-color: #0056b3; }
+        
+        .mode-selector { margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; }
+        .mode-selector label { display: inline-block; margin-right: 20px; font-weight: normal; cursor: pointer; }
+        .mode-selector input[type="radio"] { margin-right: 5px; }
+        
+        .result-section { margin-top: 15px; border-top: 1px solid #eee; padding-top: 12px; }
+        .result-box { 
+            background-color: #fff; 
+            border: 2px solid #ddd; 
+            padding: 15px; 
+            border-radius: 4px; 
+            font-family: monospace; 
+            font-size: 16px; 
+            font-weight: bold; 
+            margin-bottom: 15px;
+            word-wrap: break-word;
+            white-space: normal;
+            line-height: 1.8;
+        }
+        .result-box .num { 
+            cursor: pointer; 
+            transition: background-color 0.2s;
+        }
+        .result-box .num:hover { 
+            background-color: rgba(0, 123, 255, 0.1); 
+        }
+        
+        .mountain-title { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #555; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .mountain-scroll { overflow-x: auto; margin-bottom: 10px; }
+        
+        .scale-control { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: normal; }
+        .scale-control input[type="range"] { width: 150px; }
+        .scale-control span { min-width: 40px; }
+        
+        .save-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px; }
+        .save-buttons button { padding: 5px 10px; font-size: 14px; margin: 0; }
+        
+        .arrow-down { text-align: center; font-size: 24px; margin: 10px 0; color: #666; }
+        
+        .error { color: red; font-weight: bold; }
+        
+        .standard-check { background-color: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        .standard-process { font-family: monospace; font-size: 13px; line-height: 1.8; }
+        .success { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
 
+<div class="container">
+    <h1>0-Y 展开器</h1>
+    
+    <div class="input-group">
+        <label for="sequence">原序列 (用逗号或空格分隔)</label>
+        <input type="text" id="sequence" value="1,4,6,4" placeholder="例如: 1,4,6,4">
+    </div>
+
+    <div class="input-group">
+        <label for="repetitions">复制次数 (N)</label>
+        <input type="number" id="repetitions" value="3" min="1">
+    </div>
+
+    <div class="mode-selector">
+        <strong>展开模式：</strong>
+        <label>
+            <input type="radio" name="mode" value="normal" checked>
+            标准
+        </label>
+        <label>
+            <input type="radio" name="mode" value="i-mode">
+            1,5前无提升
+        </label>
+    </div>
+
+    <div id="output" class="result-section" style="display:none;">
+        <h3>最终结果（点击数字可截取）</h3>
+        <div id="final-result" class="result-box"></div>
+        
+        <div id="standard-result" class="standard-check" style="display:none;"></div>
+
+        <div class="mountain-title">
+            <span>山脉图</span>
+            <div class="scale-control">
+                <label for="scale-slider">缩放:</label>
+                <input type="range" id="scale-slider" min="30" max="150" value="100" step="10">
+                <span id="scale-value">80%</span>
+            </div>
+        </div>
+        
+        <div class="save-buttons">
+            <button onclick="saveMergedImage()">合并保存JPG</button>
+            <button onclick="checkStandard()">标准式判断</button>
+        </div>
+        
+        <div class="mountain-scroll">
+            <svg id="mountain-before" style="display: block;"></svg>
+        </div>
+        <div class="save-buttons">
+            <button onclick="saveImage('mountain-before', '展开前山脉图')">保存JPG</button>
+        </div>
+
+        <div class="arrow-down">↓</div>
+
+        <div class="mountain-scroll">
+            <svg id="mountain-after" style="display: block;"></svg>
+        </div>
+        <div class="save-buttons">
+            <button onclick="saveImage('mountain-after', '展开后山脉图')">保存JPG</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentScale = 1.0;
+    let currentData = null;
+
+    function parseSequence(str) {
+        return str.split(/[,，\s]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    }
+
+    document.getElementById('sequence').addEventListener('input', calculateExpansion);
+    document.getElementById('repetitions').addEventListener('input', calculateExpansion);
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+        radio.addEventListener('change', calculateExpansion);
+    });
+
+    document.getElementById('scale-slider').addEventListener('input', function(e) {
+        currentScale = e.target.value / 100;
+        document.getElementById('scale-value').textContent = e.target.value + '%';
+        
+        if (currentData) {
+            const colorInfo = currentData.badRootIndex !== -1 ? {
+                y: currentData.badRootIndex,
+                x: currentData.originalLastIndex,
+                L: currentData.badPartLength,
+                N: parseInt(document.getElementById('repetitions').value),
+                specialPositions: currentData.specialPositions
+            } : null;
+
+            drawMountain('mountain-before', currentData.matrixBefore, colorInfo, currentScale);
+            if (currentData.matrixAfter) {
+                drawMountain('mountain-after', currentData.matrixAfter, colorInfo, currentScale);
+            }
+        }
+    });
+
+    function truncateSequence(index) {
+        if (!currentData || !currentData.result) return;
+        
+        const truncated = currentData.result.slice(0, index + 1);
+        document.getElementById('sequence').value = truncated.join(',');
+        calculateExpansion();
+    }
+
+    function svgToHighQualityJpg(svg, callback) {
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        const scaleFactor = 3;
+        const baseWidth = parseFloat(svg.getAttribute('width'));
+        const baseHeight = parseFloat(svg.getAttribute('height'));
+        
+        canvas.width = baseWidth * scaleFactor;
+        canvas.height = baseHeight * scaleFactor;
+        
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        img.onload = function() {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            callback(canvas);
+        };
+        
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    }
+
+    function saveImage(svgId, filename) {
+        const svg = document.getElementById(svgId);
+        
+        svgToHighQualityJpg(svg, function(canvas) {
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename + '.jpg';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }, 'image/jpeg', 0.95);
+        });
+    }
+
+    function saveMergedImage() {
+        const svgBefore = document.getElementById('mountain-before');
+        const svgAfter = document.getElementById('mountain-after');
+        
+        if (!svgBefore || !svgAfter) return;
+        
+        const scaleFactor = 3;
+        
+        const widthBefore = parseFloat(svgBefore.getAttribute('width'));
+        const widthAfter = parseFloat(svgAfter.getAttribute('width'));
+        const width = Math.max(widthBefore, widthAfter);
+        
+        const heightBefore = parseFloat(svgBefore.getAttribute('height'));
+        const heightAfter = parseFloat(svgAfter.getAttribute('height'));
+        const gap = 40 * currentScale;
+        const totalHeight = heightBefore + gap + heightAfter;
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = width * scaleFactor;
+        canvas.height = totalHeight * scaleFactor;
+        
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        svgToHighQualityJpg(svgBefore, function(canvas1) {
+            ctx.drawImage(canvas1, 0, 0, widthBefore * scaleFactor, heightBefore * scaleFactor);
+            
+            ctx.font = (24 * currentScale * scaleFactor) + 'px Arial';
+            ctx.fillStyle = '#666';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('↓', (width / 2) * scaleFactor, (heightBefore + gap / 2) * scaleFactor);
+            
+            svgToHighQualityJpg(svgAfter, function(canvas2) {
+                ctx.drawImage(canvas2, 0, (heightBefore + gap) * scaleFactor, widthAfter * scaleFactor, heightAfter * scaleFactor);
+                
+                canvas.toBlob(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = '山脉图_合并.jpg';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }, 'image/jpeg', 0.95);
+            });
+        });
+    }
+
+    class ExpansionProcess {
+        constructor(initialSeq, n, iMode = false) {
+            this.rows = []; 
+            this.parents = []; 
+            this.initialSeq = initialSeq;
+            this.N = n;
+            this.badRootInfo = null;
+            this.iMode = iMode;
+            this.specialPositions = [];
+        }
+
+        getAncestorChain(seq, parentIndices) {
+            let lastIndex = seq.length - 1;
+            let chain = [];
+            let current = lastIndex;
+            while (true) {
+                let p = parentIndices[current];
+                if (p === -1) break;
+                chain.push(p);
+                current = p;
+            }
+            return chain;
+        }
+
+        calcNormalParents(seq) {
+            let p = new Array(seq.length).fill(-1);
+            for (let i = 0; i < seq.length; i++) {
+                for (let j = i - 1; j >= 0; j--) {
+                    if (seq[j] < seq[i]) {
+                        p[i] = j;
+                        break;
+                    }
+                }
+            }
+            return p;
+        }
+
+        calcDiffParents(seq, ancestorIndices) {
+            let p = new Array(seq.length).fill(-1);
+            let ancestorSet = new Set(ancestorIndices);
+            for (let i = 0; i < seq.length; i++) {
+                for (let j = i - 1; j >= 0; j--) {
+                    if (ancestorSet.has(j)) {
+                        if (seq[j] < seq[i]) {
+                            p[i] = j;
+                            break;
+                        }
+                    }
+                }
+            }
+            return p;
+        }
+
+        run() {
+            let currentSeq = [...this.initialSeq];
+            let rawParents = this.calcNormalParents(currentSeq);
+            let lastIdx = currentSeq.length - 1;
+            
+            if (rawParents[lastIdx] === -1) {
+                currentSeq.pop();
+                return { 
+                    result: currentSeq, 
+                    matrixBefore: [{seq: this.initialSeq, parents: rawParents}], 
+                    matrixAfter: null,
+                    badRootIndex: -1,
+                    specialPositions: []
+                };
+            }
+
+            this.rows.push(currentSeq);
+            this.parents.push(rawParents);
+            
+            let ancestorIndices = this.getAncestorChain(currentSeq, rawParents);
+            let ancestorChains = [ancestorIndices];
+
+            let level = 0;
+            while (true) {
+                let seq = this.rows[level];
+                let pars = this.parents[level];
+                let lastVal = seq[seq.length - 1];
+                let parentIdx = pars[seq.length - 1];
+                let parentVal = seq[parentIdx];
+                let diff = lastVal - parentVal;
+
+                if (diff === 1) {
+                    this.badRootInfo = { level: level, index: parentIdx, value: parentVal };
+                    break;
+                } else {
+                    let nextSeq = [];
+                    for(let k=0; k<seq.length; k++) {
+                        if (k === 0) {
+                            nextSeq.push(this.initialSeq[0]); 
+                        } else {
+                            if (pars[k] !== -1) {
+                                nextSeq.push(seq[k] - seq[pars[k]]);
+                            } else {
+                                nextSeq.push(seq[k]);
+                            }
+                        }
+                    }
+                    this.rows.push(nextSeq);
+                    
+                    let currentAncestorIndices = this.getAncestorChain(seq, pars);
+                    ancestorChains.push(currentAncestorIndices);
+                    
+                    let nextParents = this.calcDiffParents(nextSeq, currentAncestorIndices);
+                    this.parents.push(nextParents);
+                    level++;
+                }
+            }
+
+            let y = this.badRootInfo.index;
+            let x = this.rows[0].length - 1; 
+            let L = x - y;
+            let N = this.N;
+
+            let baseLen = x; 
+            let totalLen = baseLen + N * L;
+            let expandedParents = [];
+            
+            for (let r = 0; r < this.rows.length; r++) {
+                this.specialPositions.push(new Set());
+            }
+            
+            let noShiftPositions = new Set();
+            
+            if (this.iMode) {
+                
+                let candidatePositions = [];
+                
+                for (let r = 1; r < this.rows.length - 1; r++) {
+                    let ancestorSet = new Set(ancestorChains[r]);
+                    
+                    for (let p = y + 1; p < x; p++) {
+                        if (!ancestorSet.has(p)) {
+                            candidatePositions.push({row: r, pos: p});
+                        }
+                    }
+                }
+                
+                if (candidatePositions.length > 0) {
+                    
+                    let allSubsets = [];
+                    for (let mask = 1; mask < (1 << candidatePositions.length); mask++) {
+                        let subset = [];
+                        for (let i = 0; i < candidatePositions.length; i++) {
+                            if (mask & (1 << i)) {
+                                subset.push(candidatePositions[i]);
+                            }
+                        }
+                        allSubsets.push(subset);
+                    }
+                    
+                    
+                    allSubsets.sort((a, b) => b.length - a.length);
+                    
+                    let foundValidSubset = false;
+                    
+                    for (let subset of allSubsets) {
+                        let posSet = new Set(subset.map(p => `${p.row},${p.pos}`));
+                        
+                       
+                        let testN = 3;
+                        let testExpandedParents = this.buildExpandedParentsWithExceptions(y, x, L, testN, posSet);
+                        let testExpandedRows = this.buildExpandedSequence(testExpandedParents, y, x, L, testN);
+                        let testResult = testExpandedRows[0];
+                        
+                        
+                        let standardCheck = this.checkIfStandard(testResult);
+                        if (standardCheck.isStandard) {
+                            let sourceProcess = new ExpansionProcess(standardCheck.source, testN, false);
+                            let sourceResult = sourceProcess.run();
+                            
+                            if (sourceResult.matrixBefore && sourceProcess.badRootInfo) {
+                                let sourceY = sourceProcess.badRootInfo.index;
+                                let sourceX = standardCheck.source.length - 1;
+                                let sourceL = sourceX - sourceY;
+                                
+                                if (sourceL === L && sourceY === x) {
+                                                                        for (let p of subset) {
+                                        noShiftPositions.add(`${p.row},${p.pos}`);
+                                        this.specialPositions[p.row].add(p.pos);
+                                    }
+                                    foundValidSubset = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (let r = 0; r < this.rows.length; r++) {
+                let oldPars = this.parents[r];
+                let newPars = new Array(totalLen).fill(-1);
+
+                for (let i = y; i <= x; i++) {
+                    let oldParent = oldPars[i];
+                    
+                    for (let n = 0; n <= N; n++) {
+                        let targetIdx = i + n * L;
+                        
+                        if (targetIdx >= totalLen) break;
+                        
+                        if (oldParent === -1) {
+                            newPars[targetIdx] = -1;
+                        } else {
+                            let shouldNotShift = noShiftPositions.has(`${r},${i}`);
+                            
+                            if (oldParent < y || shouldNotShift) {
+                                newPars[targetIdx] = oldParent;
+                            } else {
+                                newPars[targetIdx] = oldParent + n * L;
+                            }
+                        }
+                    }
+                }
+                
+                for (let i = 0; i < y; i++) {
+                    newPars[i] = oldPars[i];
+                }
+                
+                expandedParents.push(newPars);
+            }
+
+            let expandedRows = this.buildExpandedSequence(expandedParents, y, x, L, N);
+            
+            let matrixDataBefore = this.rows.map((row, i) => {
+                return { seq: row, parents: this.parents[i] };
+            });
+            
+            let matrixDataAfter = expandedRows.map((row, i) => {
+                return { seq: row, parents: expandedParents[i] };
+            });
+
+            return {
+                result: expandedRows[0],
+                matrixBefore: matrixDataBefore,
+                matrixAfter: matrixDataAfter,
+                badRootIndex: y,
+                originalLastIndex: x,
+                badPartLength: L,
+                specialPositions: this.specialPositions
+            };
+        }
+
+        buildExpandedParentsWithExceptions(y, x, L, N, exceptionSet) {
+            let totalLen = x + N * L;
+            let expandedParents = [];
+            
+            for (let r = 0; r < this.rows.length; r++) {
+                let oldPars = this.parents[r];
+                let newPars = new Array(totalLen).fill(-1);
+        
+                for (let i = y; i <= x; i++) {
+                    let oldParent = oldPars[i];
+                    
+                    for (let n = 0; n <= N; n++) {
+                        let targetIdx = i + n * L;
+                        
+                        if (targetIdx >= totalLen) break;
+                        
+                        if (oldParent === -1) {
+                            newPars[targetIdx] = -1;
+                        } else {
+                            let shouldNotShift = exceptionSet.has(`${r},${i}`);
+                            
+                            if (oldParent < y || shouldNotShift) {
+                                newPars[targetIdx] = oldParent;
+                            } else {
+                                newPars[targetIdx] = oldParent + n * L;
+                            }
+                        }
+                    }
+                }
+                
+                for (let i = 0; i < y; i++) {
+                    newPars[i] = oldPars[i];
+                }
+                
+                expandedParents.push(newPars);
+            }
+            
+            return expandedParents;
+        }
+
+        buildExpandedSequence(expandedParents, y, x, L, N) {
+            let totalLen = x + N * L;
+            let lastRowIdx = this.rows.length - 1;
+            let lastRowSeq = this.rows[lastRowIdx];
+            let newLastRowSeq = [];
+
+            for (let i = 0; i < x; i++) {
+                newLastRowSeq.push(lastRowSeq[i]);
+            }
+
+            let badPart = lastRowSeq.slice(y, x);
+            for (let n = 0; n < N; n++) {
+                newLastRowSeq = newLastRowSeq.concat(badPart);
+            }
+            
+            let expandedRows = new Array(this.rows.length);
+            expandedRows[lastRowIdx] = newLastRowSeq;
+
+            for (let r = lastRowIdx - 1; r >= 0; r--) {
+                let currentRowLen = expandedParents[r].length;
+                let newRow = new Array(currentRowLen).fill(0);
+                let currentPars = expandedParents[r];
+                let nextRowDiff = expandedRows[r + 1]; 
+
+                newRow[0] = this.initialSeq[0];
+
+                for (let i = 1; i < currentRowLen; i++) {
+                    let parentIdx = currentPars[i];
+                    let diffVal = nextRowDiff[i]; 
+                    
+                    let parentVal = 0;
+                    if (parentIdx !== -1) {
+                        parentVal = newRow[parentIdx]; 
+                    }
+                    newRow[i] = parentVal + diffVal;
+                }
+                expandedRows[r] = newRow;
+            }
+            
+            return expandedRows;
+        }
+
+        checkIfStandard(seq) {
+            if (seq.length === 2 && seq[0] === 1) {
+                return { isStandard: true, source: seq };
+            }
+            
+            if (seq[0] !== 1) {
+                return { isStandard: false };
+            }
+            
+            let currentSeq = [1, seq[1] + 1];
+            let checkIndex = 2;
+            
+            let maxSteps = 500;
+            let stepCount = 0;
+            
+            while (checkIndex <= seq.length && stepCount < maxSteps) {
+                stepCount++;
+                
+                let targetLen = checkIndex;
+                let n = Math.max(1, targetLen - currentSeq.length + 5);
+                
+                try {
+                    let process = new ExpansionProcess(currentSeq, n, false);
+                    let result = process.run();
+                    let expanded = result.result;
+                    
+                    let truncated = expanded.slice(0, checkIndex);
+                    
+                    if (truncated.length < checkIndex) {
+                        return { isStandard: false };
+                    }
+                    
+                    let lastVal = truncated[checkIndex - 1];
+                    let targetVal = seq[checkIndex - 1];
+                    
+                    if (lastVal < targetVal) {
+                        return { isStandard: false };
+                    } else if (lastVal === targetVal) {
+                        if (checkIndex === seq.length) {
+                            return { isStandard: true, source: currentSeq };
+                        }
+                        checkIndex++;
+                    } else {
+                        currentSeq = seq.slice(0, checkIndex - 1);
+                        currentSeq.push(targetVal + 1);
+                    }
+                } catch (e) {
+                    return { isStandard: false };
+                }
+            }
+            
+            return { isStandard: false };
+        }
+    }
+
+    function getColorForIndex(idx, y, x, L, N, specialPositions = null, rowIndex = 0) {
+        if (specialPositions && specialPositions[rowIndex]) {
+            for (let p of specialPositions[rowIndex]) {
+                for (let n = 0; n <= N; n++) {
+                    if (idx === p + n * L) {
+                        return '#a855f7';
+                    }
+                }
+            }
+        }
+        
+        if (idx < y) {
+            return '#22c55e';
+        }
+        
+        if (idx === y) {
+            return '#ef4444';
+        }
+        
+        if (idx > y && idx < x) {
+            return '#333';
+        }
+        
+        for (let n = 1; n <= N; n++) {
+            let start = y + n * L;
+            let end = x + n * L;
+            
+            if (idx === start) {
+                return n % 2 === 1 ? '#00BFFF' : '#FFD700';
+            }
+            
+            if (idx > start && idx < end) {
+                return n % 2 === 1 ? '#00BFFF' : '#FFD700';
+            }
+        }
+        
+        return '#999';
+    }
+
+    function drawMountain(svgId, matrixData, colorInfo = null, scale = 1.0) {
+        const svg = document.getElementById(svgId);
+        if (!matrixData || matrixData.length === 0) return;
+
+        const cellWidth = 50 * scale;
+        const rowHeight = 60 * scale;
+        const leftPadding = 60 * scale;
+        const verticalMargin = 15 * scale;
+        const numRows = matrixData.length;
+        const maxCols = Math.max(...matrixData.map(d => d.seq.length));
+
+        const width = maxCols * cellWidth + leftPadding + 20 * scale;
+        const height = verticalMargin * 2 + (numRows - 1) * rowHeight;
+
+        svg.setAttribute('width', width);
+        svg.setAttribute('height', height);
+        svg.innerHTML = '';
+
+        for (let r = 0; r < numRows; r++) {
+            const rowData = matrixData[r];
+            const y = height - verticalMargin - r * rowHeight;
+            const isTopRow = (r === numRows - 1);
+
+            for (let i = 0; i < rowData.seq.length; i++) {
+                const x = leftPadding + i * cellWidth;
+                const value = rowData.seq[i];
+                const parentIdx = rowData.parents[i];
+
+                let color = '#333';
+                if (!isTopRow && colorInfo) {
+                    color = getColorForIndex(i, colorInfo.y, colorInfo.x, colorInfo.L, colorInfo.N, colorInfo.specialPositions, r);
+                }
+
+                if (!isTopRow) {
+                    const upperY = y - rowHeight;
+                    
+                    const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line1.setAttribute('x1', x);
+                    line1.setAttribute('y1', y - 10 * scale);
+                    line1.setAttribute('x2', x);
+                    line1.setAttribute('y2', upperY + 10 * scale);
+                    line1.setAttribute('stroke', color);
+                    line1.setAttribute('stroke-width', 1.5 * scale);
+                    svg.insertBefore(line1, svg.firstChild);
+
+                    if (parentIdx !== -1) {
+                        const parentX = leftPadding + parentIdx * cellWidth;
+                        const parentY = y;
+                        
+                        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line2.setAttribute('x1', x);
+                        line2.setAttribute('y1', upperY + 10 * scale);
+                        line2.setAttribute('x2', parentX);
+                        line2.setAttribute('y2', parentY - 10 * scale);
+                        line2.setAttribute('stroke', color);
+                        line2.setAttribute('stroke-width', 1.5 * scale);
+                        svg.insertBefore(line2, svg.firstChild);
+                    }
+                }
+
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x);
+                text.setAttribute('y', y);
+                text.setAttribute('text-anchor', 'middle');
+                                text.setAttribute('dominant-baseline', 'middle');
+                text.setAttribute('font-size', 14 * scale);
+                text.setAttribute('font-weight', 'bold');
+                text.setAttribute('fill', color);
+                text.textContent = value;
+                svg.appendChild(text);
+            }
+
+            const rowLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            rowLabel.setAttribute('x', 10 * scale);
+            rowLabel.setAttribute('y', y);
+            rowLabel.setAttribute('text-anchor', 'start');
+            rowLabel.setAttribute('dominant-baseline', 'middle');
+            rowLabel.setAttribute('font-size', 12 * scale);
+            rowLabel.setAttribute('fill', '#999');
+            rowLabel.textContent = `Row ${r}`;
+            svg.appendChild(rowLabel);
+        }
+    }
+
+    function checkStandard() {
+        const seqStr = document.getElementById('sequence').value;
+        const standardResultDiv = document.getElementById('standard-result');
+        
+        standardResultDiv.style.display = 'block';
+        standardResultDiv.innerHTML = '';
+        
+        try {
+            const originalSeq = parseSequence(seqStr);
+            
+            if (originalSeq.length < 2) {
+                throw new Error("序列长度必须至少为2");
+            }
+            
+            let processSteps = [];
+            
+            if (originalSeq.length === 2 && originalSeq[0] === 1) {
+                processSteps.push(`[${originalSeq.join(',')}] 只有两项且第一项是1`);
+                processSteps.push(`<span class="success">✓ 是标准式</span>`);
+                standardResultDiv.innerHTML = `<div class="standard-process">${processSteps.join(' → ')}</div>`;
+                return;
+            }
+            
+            if (originalSeq[0] !== 1) {
+                processSteps.push(`[${originalSeq.join(',')}] 第一项不是1`);
+                processSteps.push(`<span class="error">✗ 不是标准式</span>`);
+                standardResultDiv.innerHTML = `<div class="standard-process">${processSteps.join(' → ')}</div>`;
+                return;
+            }
+            
+            let currentSeq = [1, originalSeq[1] + 1];
+            let checkIndex = 2;
+            
+            let maxSteps = 1000;
+            let stepCount = 0;
+            
+            while (checkIndex <= originalSeq.length && stepCount < maxSteps) {
+                stepCount++;
+                
+                let targetLen = checkIndex;
+                let n = Math.max(1, targetLen - currentSeq.length + 5);
+                
+                let process = new ExpansionProcess(currentSeq, n, false);
+                let result = process.run();
+                let expanded = result.result;
+                
+                let truncated = expanded.slice(0, checkIndex);
+                
+                if (truncated.length < checkIndex) {
+                    throw new Error(`展开长度不足: ${truncated.length} < ${checkIndex}`);
+                }
+                
+                let lastVal = truncated[checkIndex - 1];
+                let targetVal = originalSeq[checkIndex - 1];
+                
+                if (lastVal < targetVal) {
+                    processSteps.push(`[${currentSeq.join(',')}] → [${truncated.join(',')}]`);
+                    processSteps.push(`位置${checkIndex-1}: ${lastVal} < ${targetVal}`);
+                    processSteps.push(`<span class="error">✗ 不是标准式</span>`);
+                    standardResultDiv.innerHTML = `<div class="standard-process">${processSteps.join('<br>')}</div>`;
+                    return;
+                } else if (lastVal === targetVal) {
+                    if (checkIndex === originalSeq.length) {
+                        processSteps.push(`[${currentSeq.join(',')}] → [${truncated.join(',')}]`);
+                        processSteps.push(`所有位置都匹配`);
+                        processSteps.push(`<span class="success">✓ 是标准式，来源于 [${currentSeq.join(',')}]</span>`);
+                        standardResultDiv.innerHTML = `<div class="standard-process">${processSteps.join('<br>')}</div>`;
+                        return;
+                    }
+                    checkIndex++;
+                } else {
+                    processSteps.push(`[${currentSeq.join(',')}] → [${truncated.join(',')}]`);
+                    currentSeq = originalSeq.slice(0, checkIndex - 1);
+                    currentSeq.push(targetVal + 1);
+                }
+            }
+            
+            if (stepCount >= maxSteps) {
+                throw new Error("检查步骤过多，可能存在问题");
+            }
+            
+        } catch (e) {
+            standardResultDiv.innerHTML = `<span class="error">错误: ${e.message}</span>`;
+            console.error(e);
+        }
+    }
+
+    function calculateExpansion() {
+        const seqStr = document.getElementById('sequence').value;
+        const nVal = parseInt(document.getElementById('repetitions').value);
+        const iMode = document.querySelector('input[name="mode"]:checked').value === 'i-mode';
+        
+        const outputDiv = document.getElementById('output');
+        const finalResultDiv = document.getElementById('final-result');
+
+        outputDiv.style.display = 'block';
+        finalResultDiv.innerHTML = '';
+
+        try {
+            const seq = parseSequence(seqStr);
+            if (seq.length < 2) {
+                throw new Error("序列长度必须至少为2");
+            }
+
+            const process = new ExpansionProcess(seq, nVal, iMode);
+            const data = process.run();
+            currentData = data;
+
+            const colorInfo = data.badRootIndex !== -1 ? {
+                y: data.badRootIndex,
+                x: data.originalLastIndex,
+                L: data.badPartLength,
+                N: nVal,
+                specialPositions: data.specialPositions
+            } : null;
+
+            let resultHTML = '';
+            data.result.forEach((val, idx) => {
+                const color = colorInfo ? getColorForIndex(idx, colorInfo.y, colorInfo.x, colorInfo.L, colorInfo.N, colorInfo.specialPositions, 0) : '#333';
+                resultHTML += `<span class="num" style="color: ${color};" onclick="truncateSequence(${idx})" title="点击截取到此处">${val}</span>`;
+                if (idx < data.result.length - 1) {
+                    resultHTML += ',';
+                }
+            });
+            finalResultDiv.innerHTML = resultHTML;
+
+            drawMountain('mountain-before', data.matrixBefore, colorInfo, currentScale);
+            if (data.matrixAfter) {
+                drawMountain('mountain-after', data.matrixAfter, colorInfo, currentScale);
+            }
+
+        } catch (e) {
+            finalResultDiv.innerHTML = `<span class="error">错误: ${e.message}</span>`;
+            console.error(e);
+        }
+    }
+
+    calculateExpansion();
+</script>
+
+</body>
+</html>
