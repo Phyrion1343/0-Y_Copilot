@@ -489,6 +489,12 @@
                 for (let i = y; i <= x; i++) {
                     let oldParent = oldPars[i];
                     
+                    if (!this.iMode) {
+                        if (oldParent !== -1 && oldParent < y && i > y && i < x) {
+                            this.specialPositions[r].add(i);
+                        }
+                    }
+                    
                     for (let n = 0; n <= N; n++) {
                         let targetIdx = i + n * L;
                         
